@@ -28,19 +28,7 @@ jobs:
     steps:
     - uses: actions/checkout@master
 
-    - name: Set up Terraform
-      uses: hashicorp/setup-terraform@v1
-      with:
-        terraform_version: "1.5.0"  # Set your desired Terraform version
-        
-   # Log into Azure using the service principal credentials
-    - name: 'Login to Azure'
-      uses: azure/login@v1
-      with:
-        client-id: ${{ secrets.CLIENT_ID }}
-        client-secret: ${{ secrets.CLIENT_SECRET }}
-        tenant-id: ${{ secrets.TENANT_ID }}
-        subscription-id: ${{ secrets.SUBSCRIPTION_ID }}
+   
     
     # Connect to Azure Container registry (ACR)
     - uses: azure/docker-login@v1
