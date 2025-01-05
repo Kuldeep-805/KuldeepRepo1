@@ -1,0 +1,102 @@
+# This workflow will build a docker container, publish it to Azure Container Registry, and deploy it to Azure Kubernetes Service.
+#
+# To configure this workflow:
+#
+# 1. Set up the following secrets in your workspace: 
+#     a. REGISTRY_USERNAME with ACR username
+#     b. REGISTRY_PASSWORD with ACR Password
+#     c. AZURE_CREDENTIALS with the output of `az ad sp create-for-rbac --sdk-auth`
+#
+# 2. Change the values for the REGISTRY_NAME, CLUSTER_NAME, CLUSTER_RESOURCE_GROUP and NAMESPACE environment variables (below).
+
+on: [push]
+
+permissions:
+  id-token: write  # Allow GitHub Actions to request an ID token
+  contents: read   # Allow reading repository contents
+# Environment variables available to all jobs and steps in this workflow
+env:
+  REGISTRY_NAME: firstcontainerappacracr1
+  CLUSTER_NAME: example-aks-cluster
+  CLUSTER_RESOURCE_GROUP: example-resources
+  NAMESPACE: mygradez
+  
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+    - uses: actions/checkout@master
+
+    - name: Set up Terraform
+      uses: hashicorp/setup-terraform@v1
+      with:
+        terraform_version: "1.5.0"  # Set your desired Terraform version
+        
+   # Log into Azure using the service principal credentials
+    - name: 'Login to Azure'
+      uses: azure/login@v1
+      with:
+        client-id: ${{ secrets.CLIENT_ID }}
+        client-secret: ${{ secrets.CLIENT_SECRET }}
+        tenant-id: ${{ secrets.TENANT_ID }}
+        subscription-id: ${{ secrets.SUBSCRIPTION_ID }}
+    
+    # Connect to Azure Container registry (ACR)
+    - uses: azure/docker-login@v1
+      with:
+        login-server: ${{ env.REGISTRY_NAME }}.azurecr.io
+        username: ${{ secrets.REGISTRY_USERNAME }} 
+        password: ${{ secrets.REGISTRY_PASSWORD }}
+    
+    # Container build and push to a Azure Container registry (ACR)
+    - run: |
+        docker build . -t ${{ env.REGISTRY_NAME }}.azurecr.io/mygradezimage:${{ github.sha }}
+        docker push ${{ env.REGISTRY_NAME }}.azurecr.io/mygradezimage:${{ github.sha }}
+    
+   
+        
+    # Set the target Azure Kubernetes Service (AKS) cluster. 
+    - uses: azure/aks-set-context@v1
+      with:
+        cluster-name: ${{ env.CLUSTER_NAME }}
+        resource-group: ${{ env.CLUSTER_RESOURCE_GROUP }}
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+      env:
+        REGISTRY_NAME: testregistryvm
+        CLUSTER_NAME: example-aks-cluster
+        CLUSTER_RESOURCE_GROUP: example-resources
+        NAMESPACE: mygradez
+    
+    # Create namespace if doesn't exist
+    - run: |
+        kubectl create namespace ${{ env.NAMESPACE }} --dry-run -o json | kubectl apply -f -
+    
+    # Create imagepullsecret for Azure Container registry (ACR)
+    - uses: azure/k8s-create-secret@v1
+      with:
+        container-registry-url: ${{ env.REGISTRY_NAME }}.azurecr.io
+        container-registry-username: ${{ secrets.REGISTRY_USERNAME }}
+        container-registry-password: ${{ secrets.REGISTRY_PASSWORD }}
+        secret-name: ${{ env.REGISTRY_NAME }}-registry-connection
+        namespace: ${{ env.NAMESPACE }}
+    
+    # Deploy app to AKS
+    - name: Replace variables in deployment file
+      run: |
+        # Replace variables using sed
+        sed -e "s|{{REGISTRY_NAME}}|${{ env.REGISTRY_NAME }}|g" \
+            -e "s|{{GITHUB_SHA}}|${{ github.sha }}|g" \
+            k8s/deployment.yml > k8s/deployment-substituted.yml
+            
+    # Deploy app to AKS
+    - uses: azure/k8s-deploy@v1
+      with:
+        manifests: |
+          k8s/deployment-substituted.yml
+          k8s/service.yml
+        images: |
+          ${{ env.REGISTRY_NAME }}.azurecr.io/mygradezimage:${{ github.sha }}
+        imagepullsecrets: |
+          ${{ env.REGISTRY_NAME }}-registry-connection
+        namespace: ${{ env.NAMESPACE }}
