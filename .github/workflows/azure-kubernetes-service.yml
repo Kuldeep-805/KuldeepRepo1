@@ -49,10 +49,7 @@ jobs:
       with:
         cluster-name: ${{ env.CLUSTER_NAME }}
         resource-group: ${{ env.CLUSTER_RESOURCE_GROUP }}
-        clientId: "15db088b-6fb0-4234-9a8a-5e19f8fbe323"
-        clientSecret: "1zV8Q~MnC0i37emUFPfFQp3ZS6sP8LCLdpSlkcNZ"
-        subscriptionId: "6eb1e529-5df7-4fe6-9aa4-50293a53389c"
-        tenantId: "58f571bf-90e1-4d8e-8c60-12aa5e97e2be"
+        creds: ${{ Secrets.AZURE_CREDENTIALS }}
       env:
         REGISTRY_NAME: testregistryvm
         CLUSTER_NAME: example-aks-cluster
